@@ -88,6 +88,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 
+
 # === Создание заявки ===
 async def create_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ticket_id = len(tickets) + 1
@@ -105,11 +106,25 @@ async def create_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🏢 {tickets[ticket_id]['place']}\n"
             f"💬 {tickets[ticket_id]['desc']}")
 
+    # Кнопка "Перейти к заявке" = открыть чат с автором
+    kb = [[
+        InlineKeyboardButton("Перейти к заявке", url=f"tg://user?id={tickets[ticket_id]['user_id']}")
+    ]]
+
     # Отправка в канал
     if tickets[ticket_id]["photo"]:
-        await context.bot.send_photo(CHANNEL_ID, tickets[ticket_id]["photo"], caption=text)
+        await context.bot.send_photo(
+            CHANNEL_ID,
+            tickets[ticket_id]["photo"],
+            caption=text,
+            reply_markup=InlineKeyboardMarkup(kb)
+        )
     else:
-        await context.bot.send_message(CHANNEL_ID, text)
+        await context.bot.send_message(
+            CHANNEL_ID,
+            text,
+            reply_markup=InlineKeyboardMarkup(kb)
+        )
 
     await update.message.reply_text(f"Заявка #{ticket_id} отправлена в канал ✅")
     context.user_data.clear()
