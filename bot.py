@@ -99,6 +99,7 @@ async def create_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "photo": context.user_data.get("photo_id"),
         "status": "Новая",
         "user_id": update.effective_user.id,
+        "username": update.effective_user.username  # сохраняем username
     }
 
     text = (f"🆕 Заявка #{ticket_id}\n"
@@ -106,10 +107,15 @@ async def create_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🏢 {tickets[ticket_id]['place']}\n"
             f"💬 {tickets[ticket_id]['desc']}")
 
-    # Кнопка "Перейти к заявке" = открыть чат с автором
-    kb = [[
-        InlineKeyboardButton("Перейти к заявке", url=f"tg://user?id={tickets[ticket_id]['user_id']}")
-    ]]
+    # --- Кнопка "Перейти к заявке" ---
+    if tickets[ticket_id]["username"]:
+        # если у юзера есть username
+        button_url = f"https://t.me/{tickets[ticket_id]['username']}"
+    else:
+        # fallback если username нет
+        button_url = f"tg://user?id={tickets[ticket_id]['user_id']}"
+
+    kb = [[InlineKeyboardButton("Перейти к заявке", url=button_url)]]
 
     # Отправка в канал
     if tickets[ticket_id]["photo"]:
