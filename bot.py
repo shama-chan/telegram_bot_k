@@ -155,6 +155,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Отправьте фото вашей проблемы.")
 
     elif query.data == "skip_photo":
+        await query.edit_message_text("Вы выбрали: без фото")
         await create_ticket(update, context)
 
     elif query.data.startswith("ticket_"):
@@ -190,6 +191,9 @@ async def create_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🏢 {t['place']}\n"
             f"💬 {t['desc']}")
 
+    # подтверждаем пользователю всегда
+    await update.effective_message.reply_text(f"Заявка #{ticket_id} отправлена ✅ Ожидайте ответа оператора.")
+
     # Кнопка "Перейти к заявке"
     if t["username"]:
         button_url = f"https://t.me/{t['username']}"
@@ -221,7 +225,6 @@ async def create_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         context.chat_data[f"ticket_{msg.message_id}"] = ticket_id
 
-    await update.message.reply_text(f"Заявка #{ticket_id} отправлена ✅")
     context.user_data.clear()
 
 
@@ -265,11 +268,28 @@ async def list_tickets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Ваши тикеты:", reply_markup=InlineKeyboardMarkup(kb))
 
 
+# === FAQ (отправка PDF) ===
+async def faq(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    files = [
+        "file1.pdf",
+        "file2.pdf"
+    ]
+
+    for f in files:
+        try:
+            with open(f, "rb") as doc:
+                await update.message.reply_document(document=doc, caption=f"📄 {os.path.basename(f)}")
+        except Exception as e:
+            logger.error(f"Не удалось отправить {f}: {e}")
+            await update.message.reply_text(f"Не удалось отправить {f}")
+
+
 # === Установка меню команд ===
 async def set_commands(app):
     await app.bot.set_my_commands([
         BotCommand("start", "Начать регистрацию"),
-        BotCommand("tickets", "Мои заявки")
+        BotCommand("tickets", "Мои заявки"),
+        BotCommand("faq", "Часто задаваемые вопросы (PDF)")
     ])
 
 
@@ -282,6 +302,7 @@ def main():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("tickets", list_tickets))
+    app.add_handler(CommandHandler("faq", faq))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app.add_handler(CallbackQueryHandler(button_handler))
