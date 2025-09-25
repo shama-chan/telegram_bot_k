@@ -179,11 +179,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         set_ticket_status(tid, "Закрытый")
+
+        # кто закрыл тикет
+        admin = update.effective_user
+        admin_name = f"@{admin.username}" if admin.username else admin.full_name
+
         text = (f"🎫 Тикет #{tid}\n"
                 f"👤 {t['user']}\n"
                 f"🏢 {t['place']}\n"
                 f"💬 {t['desc']}\n"
-                f"📌 Статус: Закрытый")
+                f"📌 Статус: Закрыт админом {admin_name}")
 
         try:
             if t["photo"]:
@@ -205,7 +210,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_message(
                 t["user_id"],
-                f"❌ Ваш тикет #{tid} был закрыт администратором."
+                f"❌ Ваш тикет #{tid} был закрыт администратором {admin_name}."
             )
         except Exception as e:
             logger.error(f"Не удалось уведомить пользователя {t['user_id']}: {e}")
@@ -230,7 +235,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def create_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
-    # закрываем старые тикеты в канале
+    # закрываем старые тикеты
     old_tickets = get_user_tickets(user_id, is_admin=True)
     for tid, status in old_tickets:
         t = get_ticket(tid)
@@ -240,7 +245,7 @@ async def create_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         f"👤 {t['user']}\n"
                         f"🏢 {t['place']}\n"
                         f"💬 {t['desc']}\n"
-                        f"📌 Статус: Закрытый")
+                        f"📌 Статус: Закрыт автоматически (новый тикет создан)")
             try:
                 if t["photo"]:
                     await context.bot.edit_message_caption(
