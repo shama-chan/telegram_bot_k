@@ -271,14 +271,14 @@ async def list_tickets(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # === FAQ (отправка PDF) ===
 async def faq(update: Update, context: ContextTypes.DEFAULT_TYPE):
     files = [
-        "file1.pdf",
-        "file2.pdf"
+        "Как_поменять_пароль_или_что_делать_если_заблокирована_учетная_запись.pdf",
+        "Создание_заявки_через_шаблон_формы.pdf"
     ]
 
     for f in files:
         try:
             with open(f, "rb") as doc:
-                await update.message.reply_document(document=doc, caption=f"📄 {os.path.basename(f)}")
+                await update.message.reply_document(document=doc, caption=f"{os.path.basename(f)}")
         except Exception as e:
             logger.error(f"Не удалось отправить {f}: {e}")
             await update.message.reply_text(f"Не удалось отправить {f}")
