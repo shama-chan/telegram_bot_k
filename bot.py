@@ -25,7 +25,11 @@ TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
     raise ValueError("BOT_TOKEN не найден! Задай его через переменные окружения.")
 
-CHANNEL_ID = -1003187110992  # свой channel id
+CHANNEL_ID = os.getenv("CHANNEL_ID")
+if not CHANNEL_ID:
+    raise ValueError("CHANNEL_ID не найден! Задай его через переменные окружения.")
+CHANNEL_ID = int(CHANNEL_ID)  # приводим к числу
+  # свой channel id
 
 DB_PATH = "bot_final.db"
 
@@ -196,7 +200,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user:
         await update.message.reply_text("Добро пожаловать обратно! Вы в главном меню:", reply_markup=main_menu_kb())
     else:
-        await update.message.reply_text("Привет! Давай зарегистрируем тебя.\nНапиши *Имя и Фамилию*:", parse_mode="Markdown")
+        await update.message.reply_text("Привет! Давайте зарегистрируем вас.\nНапишите *Имя и Фамилию*:", parse_mode="Markdown")
         context.user_data["step"] = "get_full_name"
 
 
@@ -204,10 +208,15 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     step = context.user_data.get("step")
 
+    # === Если нажата кнопка меню — сразу сбрасываем шаги ===
+    if text in ["🆕 Создать тикет", "📂 Мои тикеты", "📖 FAQ", "⚙️ Изменить данные"]:
+        context.user_data.clear()
+
+    # --- обработка регистрации ---
     if step == "get_full_name":
         context.user_data["full_name"] = text.strip()
         context.user_data["step"] = "get_place"
-        await update.message.reply_text("Отлично. Теперь напиши, где ты сидишь (этаж, кабинет и т.д.):")
+        await update.message.reply_text("Отлично. Теперь напишите, где вы сидите (этаж, кабинет и т.д.):")
         return
 
     if step == "get_place":
@@ -220,28 +229,20 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             place,
         )
         context.user_data.clear()
-        await update.message.reply_text(f"✅ Регистрация завершена!\n\n👤 {full_name}\n📍 {place}", reply_markup=main_menu_kb())
+        await update.message.reply_text(
+            f"✅ Регистрация завершена!\n\n👤 {full_name}\n📍 {place}",
+            reply_markup=main_menu_kb()
+        )
         return
 
+    # --- кнопки меню ---
     if text == "🆕 Создать тикет":
         user = get_user(update.effective_user.id)
         if not user:
             await update.message.reply_text("Ты не зарегистрирован. Напиши /start чтобы пройти регистрацию.")
             return
-        await update.message.reply_text("Опиши проблему (несколько строк). Если нужно — потом отправишь фото.")
+        await update.message.reply_text("Опишите проблему (несколько строк). Если нужно — потом отправишь фото.")
         context.user_data["step"] = "ticket_description"
-        return
-
-    if step == "ticket_description":
-        description = text.strip()
-        context.user_data["ticket_description"] = description
-
-        kb = [
-            [InlineKeyboardButton("📎 Прикрепить фото", callback_data="add_photo")],
-            [InlineKeyboardButton("⏭️ Без фото", callback_data="skip_photo")],
-        ]
-        await update.message.reply_text("Хотите прикрепить фото?", reply_markup=InlineKeyboardMarkup(kb))
-        context.user_data["step"] = "ticket_ask_photo"
         return
 
     if text == "📂 Мои тикеты":
@@ -261,11 +262,25 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if text == "⚙️ Изменить данные":
-        await update.message.reply_text("Введи новое *Имя и Фамилию*:", parse_mode="Markdown")
+        await update.message.reply_text("Введите новое *Имя и Фамилию*:", parse_mode="Markdown")
         context.user_data["step"] = "get_full_name"
         return
 
-    await update.message.reply_text("Я не понял. Используй кнопки меню ниже.", reply_markup=main_menu_kb())
+    # --- шаг создания тикета ---
+    if step == "ticket_description":
+        description = text.strip()
+        context.user_data["ticket_description"] = description
+
+        kb = [
+            [InlineKeyboardButton("📎 Прикрепить фото", callback_data="add_photo")],
+            [InlineKeyboardButton("⏭️ Без фото", callback_data="skip_photo")],
+        ]
+        await update.message.reply_text("Хотите прикрепить фото?", reply_markup=InlineKeyboardMarkup(kb))
+        context.user_data["step"] = "ticket_ask_photo"
+        return
+
+    # --- fallback ---
+    await update.message.reply_text("Бот не понял. Используйте кнопки меню ниже.", reply_markup=main_menu_kb())
 
 
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -286,7 +301,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "add_photo":
         context.user_data["step"] = "waiting_photo"
-        await query.edit_message_text("Отправь фото (можно одно). После фото тикет будет создан.")
+        await query.edit_message_text("Отправьте фото (можно одно). После фото тикет будет создан.")
         return
 
     if data == "skip_photo":
@@ -506,7 +521,7 @@ async def faq_files(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if os.path.exists(f):
             try:
                 with open(f, "rb") as doc:
-                    await update.message.reply_document(document=doc, caption=os.path.basename(f))
+                    await update.message.reply_document(document=doc)
                     sent_any = True
             except Exception as e:
                 logger.error(f"Ошибка отправки {f}: {e}")
