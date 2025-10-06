@@ -1,9 +1,8 @@
-version: "3.9"
-
 services:
   tg-bot:
-    image: ghcr.io/shama-chan/telegram_bot_k:sha-dd62aa2aad06eaa89f7863e8a4aaec6bbbcb1b37
-    env_file: .env
+    image: ghcr.io/shama-chan/telegram_bot_k:sha-5534d6765f97e7c521bf24737b2c394f5ecc8ada
     restart: unless-stopped
+    env_file:
+      - .env
     volumes:
       - ./data:/app/data
