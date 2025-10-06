@@ -1,72 +1,135 @@
-name: Build & Deploy bot
-on:
-  push: { branches: [ "main" ] }
-  workflow_dispatch:
+deploy:
+  needs: build
+  runs-on: ubuntu-latest
+  steps:
+    - name: Connect to Tailscale
+      uses: tailscale/github-action@v2
+      with:
+        authkey: ${{ secrets.TS_AUTHKEY }}
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    permissions: { contents: read, packages: write }
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
+    - name: Write SSH key (private) for tests
+      shell: bash
+      run: |
+        umask 077
+        cat > key.pem <<'KEY'
+        ${{ secrets.SSH_KEY }}
+        KEY
+        chmod 600 key.pem
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      # Подключаем job к твоему tailnet
-      - name: Connect to Tailscale
-        uses: tailscale/github-action@v2
-        with:
-          authkey: ${{ secrets.TS_AUTHKEY }}
-
-      # Деплой по SSH через Tailscale-адрес
-      - name: Deploy via SSH over Tailscale
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.SSH_HOST }}     # 100.x.x.x
-          username: ${{ secrets.SSH_USER }} # ubuntu (или твой)
-          key: ${{ secrets.SSH_KEY }}
-          script: |
+    # ---------- СЕРИЯ ТЕСТОВ ПЕРЕД ДЕПЛОЕМ ----------
+    - name: Sanity 1 — can SSH & whoami/hostname/pwd
+      shell: bash
+      run: |
+        ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+          -i key.pem ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} '
             set -e
-            cd ~/bot_tg/bot.py   # <- ПУТЬ К ТВОЕМУ docker-compose.yml на ВМ
+            echo "== inside VM =="
+            echo -n "whoami: "; whoami
+            echo -n "host:   "; hostname
+            echo -n "pwd:    "; pwd
+            date
+          '
+
+    - name: Sanity 2 — target dir & compose file exist
+      shell: bash
+      run: |
+        ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -i key.pem \
+          ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} '
+            set -e
+            cd ~/bot_tg/bot.py   # <<< ПУТЬ К ТВОЕМУ docker-compose.yml
+            echo "== ls target dir =="
+            ls -la
+            test -f docker-compose.yml || { echo "docker-compose.yml MISSING"; exit 1; }
+            echo "== compose present ✅ =="
+          '
+
+    - name: Sanity 3 — docker/compose present, disk, tailscale
+      shell: bash
+      run: |
+        ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -i key.pem \
+          ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} '
+            set -e
+            docker --version
+            docker compose version
+            echo "== disk free =="
+            df -h | sed -n "1,5p"
+            echo "== ip addrs =="
+            ip -4 addr | sed -n "1,20p" || true
+            echo "== tailscale ip/status =="
+            tailscale ip -4 || true
+            tailscale status || true
+          '
+
+    - name: Sanity 4 — .env exists and not empty
+      shell: bash
+      run: |
+        ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -i key.pem \
+          ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} '
+            set -e
+            cd ~/bot_tg/bot.py   # <<< ПУТЬ К ТВОЕМУ docker-compose.yml
+            test -s .env || { echo ".env MISSING or EMPTY"; exit 1; }
+            echo "== .env present ✅ =="
+          '
+
+    - name: Sanity 5 — GHCR login and pre-pull (non-fatal)
+      shell: bash
+      run: |
+        ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -i key.pem \
+          ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+            set -e
             docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
+            echo '== try pre-pull image (may miss on PRs, non-fatal) =='
+            docker pull ghcr.io/${{ github.repository }}:sha-${{ github.sha }} || true
+          "
 
-            # Пропишем иммутабельный тег текущего коммита
-            if grep -q '^ *image:' docker-compose.yml; then
-              sed -i 's#^ *image:.*#  image: ghcr.io/${{ github.repository }}:sha-${{ github.sha }}#' docker-compose.yml
-            else
-              # Если у тебя до этого был build:, принудительно добавим image:
-              sed -i 's#^\(\s*tg-bot:\)#\1\n    image: ghcr.io/${{ github.repository }}:sha-${{ github.sha }}#' docker-compose.yml || true
-            fi
+    - name: Sanity 6 — show running containers (before deploy)
+      shell: bash
+      run: |
+        ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -i key.pem \
+          ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} '
+            docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
+          '
 
-            # .env должен уже лежать рядом и НЕ в гите
-            test -f .env || (echo "BOT_TOKEN=PUT_NEW_TOKEN_HERE" > .env)
+    # ---------- ЕСЛИ ВСЁ ОК — ДЕПЛОЙ ----------
+    - name: Deploy via SSH over Tailscale
+      uses: appleboy/ssh-action@v1.2.0
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USER }}
+        key: ${{ secrets.SSH_KEY }}
+        timeout: 180s
+        script: |
+          set -euo pipefail
+          cd ~/bot_tg/bot.py   # <<< ПУТЬ К ТВОЕМУ docker-compose.yml
+          docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
 
-            docker compose pull
-            docker compose up -d
-            docker image prune -f
+          # подставим иммутабельный тег текущего коммита
+          if grep -q '^\s*image:' docker-compose.yml; then
+            sed -i 's#^\(\s*image:\).*#\1 ghcr.io/${{ github.repository }}:sha-${{ github.sha }}#' docker-compose.yml
+          else
+            echo "WARNING: no 'image:' line found in docker-compose.yml"
+            echo "Please set image: ghcr.io/${{ github.repository }}:sha-${{ github.sha }}"
+            exit 1
+          fi
 
-      - name: Show status
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          script: |
-            cd ~/bot_tg/bot.py
-            docker compose ps
-            docker compose logs --since 2m --no-color | tail -n 200
+          echo "== docker compose pull =="
+          docker compose pull
+
+          echo "== docker compose up -d =="
+          docker compose up -d
+
+          echo "== prune old images (optional) =="
+          docker image prune -f || true
+
+    - name: Post-check — status & last logs
+      uses: appleboy/ssh-action@v1.2.0
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USER }}
+        key: ${{ secrets.SSH_KEY }}
+        timeout: 120s
+        script: |
+          cd ~/bot_tg/bot.py   # <<< ПУТЬ К ТВОЕМУ docker-compose.yml
+          docker compose ps
+          echo "== recent logs =="
+          docker compose logs --since 2m --no-color | tail -n 200 || true
