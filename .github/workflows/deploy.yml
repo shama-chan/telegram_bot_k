@@ -100,11 +100,16 @@ jobs:
           script: |
             set -e
             cd ~/bot_tg/bot.py   # <<< измени путь если другой
+
+            # 🔹 Новый шаг логина в GHCR
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u shama-chan --password-stdin
+
             docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
             sed -i 's#^\s*image:.*#  image: ghcr.io/${{ github.repository }}:sha-${{ github.sha }}#' docker-compose.yml
             docker compose pull
             docker compose up -d
             docker image prune -f
+
 
       - name: Post-check — status & last logs
         uses: appleboy/ssh-action@v1.2.0
