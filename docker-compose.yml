@@ -1,0 +1,7 @@
+services:
+  tg-bot:
+    image: ghcr.io/shama-chan/telegram_bot_k.git:latest
+    env_file: .env
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
