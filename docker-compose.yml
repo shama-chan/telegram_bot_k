@@ -1,6 +1,6 @@
 services:
   tg-bot:
-    image: "ghcr.io/shama-chan/telegram_bot_k:latest"
+    image: ghcr.io/shama-chan/telegram_bot_k:latest
     env_file:
       - .env
     restart: unless-stopped
