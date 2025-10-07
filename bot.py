@@ -2,6 +2,9 @@ import logging
 import os
 import sqlite3
 from datetime import datetime, timezone
+from telegram import ReplyKeyboardRemove
+
+
 
 from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup,
@@ -284,6 +287,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "Привет! Давайте зарегистрируем вас.\nНапишите *Имя и Фамилию*:",
             parse_mode="Markdown",
+            reply_markup=ReplyKeyboardRemove(),
         )
         context.user_data["step"] = "get_full_name"
 
@@ -291,6 +295,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").strip()
     step = context.user_data.get("step")
+
+    # 🔹 Защита от случайных кнопок во время регистрации или редактирования
+    if step in {"get_full_name", "get_place", "edit_full_name", "edit_place"}:
+        if text in {"🆕 Создать тикет", "📂 Мои тикеты", "📖 FAQ", "⚙️ Изменить данные"}:
+            await update.message.reply_text(
+                "❗ Пожалуйста, завершите ввод данных перед использованием меню."
+            )
+            return
+
 
     # --- стадия отзыва ---
     if step == "feedback_comment":
@@ -722,9 +735,21 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
     app.add_handler(CallbackQueryHandler(button_handler))
 
-    logger.info("Бот запущен...")
-    app.run_polling()
+    logger.info("Бот запущен на вебхуке...")
+
+    WEBHOOK_URL = "https://myvm.tailaa4f59.ts.net/webhook"
+    PORT = 8080
+
+    # ✅ Правильный способ для версии 21+
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        url_path="webhook",
+        webhook_url=WEBHOOK_URL,
+    )
 
 
 if __name__ == "__main__":
     main()
+
+
