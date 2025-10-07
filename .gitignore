@@ -3,6 +3,5 @@ data/
 venv/
 __pycache__/
 *.pyc
-*.pdf
 .DS_Store
 *.db
