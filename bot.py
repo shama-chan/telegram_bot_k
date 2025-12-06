@@ -735,18 +735,9 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
     app.add_handler(CallbackQueryHandler(button_handler))
 
-    logger.info("Бот запущен на вебхуке...")
+    logger.info("Бот запущен в режиме polling...")
 
-    WEBHOOK_URL = "https://myvm.tailaa4f59.ts.net/webhook"
-    PORT = 8080
-
-    # ✅ Правильный способ для версии 21+
-    app.run_webhook(
-        listen="0.0.0.0",
-        port=PORT,
-        url_path="webhook",
-        webhook_url=WEBHOOK_URL,
-    )
+    app.run_polling(drop_pending_updates=True)
 
 
 if __name__ == "__main__":
